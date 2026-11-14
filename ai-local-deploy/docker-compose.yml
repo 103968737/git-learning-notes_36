@@ -1,0 +1,63 @@
+# AI 本地部署编排：Ollama（推理服务）+ Open WebUI（聊天界面）
+# 用法：docker compose up -d
+name: local-ai
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: local-ai-ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    environment:
+      # 容器内必须监听 0.0.0.0，宿主机端口映射才生效
+      OLLAMA_HOST: "0.0.0.0:11434"
+      # 模型在内存中保留的时长，越长响应越快、占用显存越多
+      OLLAMA_KEEP_ALIVE: "${OLLAMA_KEEP_ALIVE:-5m}"
+      # 同时处理的请求数；显存不足时调小为 1
+      OLLAMA_NUM_PARALLEL: "${OLLAMA_NUM_PARALLEL:-2}"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    # === 有 NVIDIA 显卡时取消下面注释以启用 GPU ===
+    # 前置条件：安装 NVIDIA 驱动 + nvidia-container-toolkit，
+    # 并在 Docker Desktop 中启用 WSL 2 GPU 支持。
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: local-ai-webui
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    ports:
+      - "${WEBUI_PORT:-3000}:8080"
+    environment:
+      # 容器网络内通过服务名访问 Ollama
+      OLLAMA_BASE_URL: "http://ollama:11434"
+      # 首次启动自动下载轻量向量模型，用于 WebUI 的知识库检索
+      RAG_EMBEDDING_ENGINE: "ollama"
+      RAG_EMBEDDING_MODEL: "nomic-embed-text"
+      # 本机单用户试用可关闭登录；多人使用请改为 true
+      WEBUI_AUTH: "${WEBUI_AUTH:-false}"
+      WEBUI_NAME: "本地 AI 控制台"
+    volumes:
+      - webui-data:/app/backend/data
+
+volumes:
+  ollama-models:
+    name: local-ai-ollama-models
+  webui-data:
+    name: local-ai-webui-data

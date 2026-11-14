@@ -1,0 +1,2 @@
+# 仅 openai_client.py 需要；chat.py 与 rag_demo.py 只用标准库。
+openai>=1.40.0
